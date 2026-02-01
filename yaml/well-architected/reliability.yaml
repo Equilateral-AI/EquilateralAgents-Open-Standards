@@ -1,0 +1,172 @@
+id: reliability
+category: well-architected
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Configure Lambda retry attempts (max 2) with dead letter queue destinations for failed invocations"
+  - action: ALWAYS
+    rule: "Implement retry with exponential backoff and jitter for transient errors (ECONNRESET, ETIMEDOUT, ThrottlingException)"
+  - action: ALWAYS
+    rule: "Deploy databases in Multi-AZ configuration for production workloads"
+  - action: ALWAYS
+    rule: "Place Lambda functions in multiple subnets across availability zones when using VPC"
+  - action: ALWAYS
+    rule: "Set DLQ alarms - any message in a dead letter queue triggers an alert"
+  - action: USE
+    rule: "Circuit breaker pattern for external service calls with configurable failure threshold and reset timeout"
+  - action: ALWAYS
+    rule: "Enable automated RDS backups with 30-day retention and deletion protection for production"
+  - action: USE
+    rule: "Reserved concurrency for critical Lambda functions to guarantee capacity"
+  - action: ALWAYS
+    rule: "Implement health check endpoints that verify database, cache, and external API connectivity"
+  - action: USE
+    rule: "Graceful degradation with fallbacks when non-critical dependencies fail"
+  - action: ALWAYS
+    rule: "Handle Lambda SIGTERM signal to gracefully close database connections"
+  - action: USE
+    rule: "CodeDeploy linear deployments with automatic rollback on error rate or latency alarm triggers"
+
+anti_patterns:
+  - "No retry logic for transient failures - single attempt and fail"
+  - "Retrying non-transient errors (400 Bad Request, validation errors)"
+  - "No dead letter queue for async processing - failed messages are lost"
+  - "Single-AZ database deployment in production"
+  - "No health check endpoints to verify system status"
+  - "Hard failure when non-critical dependency is unavailable instead of graceful degradation"
+  - "No automated backups or untested recovery procedures"
+
+examples:
+  retry_with_backoff: |
+    async function retryWithBackoff(fn, maxRetries = 3) {
+      let lastError;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          return await fn();
+        } catch (error) {
+          lastError = error;
+          if (!isRetryable(error)) throw error;
+          const delay = Math.min(
+            1000 * Math.pow(2, attempt) + Math.random() * 1000,
+            30000
+          );
+          await sleep(delay);
+        }
+      }
+      throw lastError;
+    }
+
+  circuit_breaker: |
+    class CircuitBreaker {
+      constructor(options = {}) {
+        this.failureThreshold = options.failureThreshold || 5;
+        this.resetTimeout = options.resetTimeout || 30000;
+        this.state = 'CLOSED';
+        this.failures = 0;
+        this.lastFailure = null;
+      }
+      async call(fn) {
+        if (this.state === 'OPEN') {
+          if (Date.now() - this.lastFailure > this.resetTimeout) {
+            this.state = 'HALF_OPEN';
+          } else {
+            throw new Error('Circuit breaker is OPEN');
+          }
+        }
+        try {
+          const result = await fn();
+          this.onSuccess();
+          return result;
+        } catch (error) {
+          this.onFailure();
+          throw error;
+        }
+      }
+    }
+
+  dead_letter_queue: |
+    ProcessQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+          maxReceiveCount: 3
+
+    DeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        MessageRetentionPeriod: 1209600  # 14 days
+
+    DLQAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        MetricName: ApproximateNumberOfMessagesVisible
+        Namespace: AWS/SQS
+        Dimensions:
+          - Name: QueueName
+            Value: !GetAtt DeadLetterQueue.QueueName
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+
+  health_check: |
+    async function healthCheck() {
+      const checks = {
+        database: await checkDatabase(),
+        cache: await checkCache(),
+        externalApi: await checkExternalApi()
+      };
+      const healthy = Object.values(checks).every(c => c.healthy);
+      return {
+        statusCode: healthy ? 200 : 503,
+        body: JSON.stringify({
+          status: healthy ? 'healthy' : 'degraded',
+          checks,
+          timestamp: new Date().toISOString()
+        })
+      };
+    }
+
+  multi_az_database: |
+    Database:
+      Type: AWS::RDS::DBInstance
+      Properties:
+        MultiAZ: true
+        BackupRetentionPeriod: 30
+        PreferredBackupWindow: '03:00-04:00'
+        DeleteAutomatedBackups: false
+        DeletionProtection: true
+        DBSubnetGroupName: !Ref DatabaseSubnetGroup
+
+  codedeploy_rollback: |
+    DeploymentPreference:
+      Type: Linear10PercentEvery1Minute
+      Alarms:
+        - !Ref ErrorRateAlarm
+        - !Ref LatencyAlarm
+      Hooks:
+        PreTraffic: !Ref PreTrafficHook
+        PostTraffic: !Ref PostTrafficHook
+
+context: |
+  Reliability is an AWS Well-Architected pillar focused on the ability of a workload to
+  perform its intended function correctly and consistently. Key patterns include automatic
+  failure recovery (retries, circuit breakers, DLQs), horizontal scaling (Lambda concurrency,
+  read replicas), Multi-AZ fault isolation, and automated change management (CodeDeploy with
+  rollback). Retry only transient errors with exponential backoff and jitter to avoid
+  thundering herd. Dead letter queues capture failed messages for analysis and reprocessing.
+  Health checks should verify all dependencies. Graceful degradation means falling back to
+  simpler behavior when non-critical dependencies fail rather than returning errors.
+
+tags:
+  - reliability
+  - well-architected
+  - retry
+  - circuit-breaker
+  - dead-letter-queue
+  - multi-az
+  - health-check
+  - backup
+  - codedeploy
+  - graceful-degradation

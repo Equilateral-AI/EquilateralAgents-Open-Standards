@@ -1,0 +1,81 @@
+id: cost-optimization-principles
+category: well-architected
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Perform cost analysis during planning, before implementation -- estimate monthly costs per component"
+  - action: PREFER
+    rule: "Pay-per-use by default; add fixed costs only when measured need exists over 3+ months"
+  - action: NEVER
+    rule: "Use production-sized resources for development environments"
+  - action: ALWAYS
+    rule: "Validate costs before deployment and require approval above threshold"
+  - action: ALWAYS
+    rule: "Size resources based on measured load, not guesses -- monitor and adjust continuously"
+  - action: ALWAYS
+    rule: "Actively find and eliminate wasteful spending via monthly reviews"
+
+anti_patterns:
+  - "Deploying large instance classes without cost review (e.g. db.r5.24xlarge at $13k/month)"
+  - "Using always-on EC2 for batch jobs that run 1 hour/day"
+  - "Same resource size across dev, staging, and production environments"
+  - "No cost analysis gate in CI/CD pipeline"
+  - "Orphaned resources (unattached EBS volumes, forgotten test instances)"
+  - "Over-provisioned instances running at less than 20% utilization"
+
+examples:
+  environment_sizing: |
+    # Bad - same size everywhere
+    Database:
+      DBInstanceClass: db.r5.xlarge  # $365/month x 3 envs = $1,095/month
+
+    # Good - environment-appropriate
+    Database:
+      DBInstanceClass: !If [IsProd, db.r5.xlarge, !If [IsStaging, db.t3.small, db.t3.micro]]
+      MultiAZ: !If [IsProd, true, false]
+      # Dev: $15/month, Staging: $30/month, Prod: $365/month
+      # Total: $410/month (62% savings)
+
+  pay_per_use: |
+    # Bad - always-on EC2 for batch jobs
+    EC2Instance:
+      InstanceType: t3.large  # $60/month even if used 1 hour/day
+
+    # Good - Lambda pay-per-invocation
+    BatchFunction:
+      Runtime: python3.11
+      # Cost: $0.20/hour when running -> $6/month for 1 hour/day
+
+  cost_gate_cicd: |
+    # GitHub Actions cost check
+    cost-check:
+      steps:
+        - run: infracost breakdown --path . > costs.json
+        - run: |
+            monthly_cost=$(jq '.totalMonthlyCost' costs.json)
+            if (( $(echo "$monthly_cost > 100" | bc -l) )); then
+              echo "Cost $monthly_cost exceeds threshold"
+              exit 1
+            fi
+
+context: |
+  Universal patterns for building cost-effective systems. Cost analysis must
+  happen during planning, before implementation. Default to pay-per-use and
+  switch to reserved capacity only when usage is consistent and high for 3+
+  months. Dev/staging environments can be 90% cheaper than production.
+  Approval thresholds: <$50 auto-approve, $50-200 team lead, $200-1000
+  manager, >$1000 director + business justification. Monitor utilization:
+  <20% = downsize candidate, >80% = upsize candidate. Review new resources
+  weekly for first month, established resources monthly, large costs (>$500)
+  weekly. Monthly waste checklist: review >$10/month resources, check orphaned
+  resources, verify utilization, review data transfer costs.
+
+tags:
+  - well-architected
+  - cost
+  - infrastructure
+  - cloud
+  - serverless
+  - sizing

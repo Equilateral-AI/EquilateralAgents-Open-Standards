@@ -1,0 +1,130 @@
+id: lambda-database-standards
+category: serverless
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Use environment variables with {{resolve:ssm:param:1}} in SAM templates for database configuration"
+  - action: NEVER
+    rule: "Fetch SSM parameters or Secrets Manager values at runtime - costs $25+/month per million invocations"
+  - action: NEVER
+    rule: "Use connection pools (new Pool()) in Lambda - one container handles one request at a time"
+  - action: ALWAYS
+    rule: "Cache a single database client in module scope and reuse across warm invocations"
+  - action: ALWAYS
+    rule: "Validate cached connection with SELECT 1 before reuse and reconnect on failure"
+  - action: NEVER
+    rule: "Create a new database connection per invocation or call client.end() after each request"
+  - action: ALWAYS
+    rule: "Set Lambda-optimized timeouts: connectionTimeoutMillis 5000, query_timeout 10000"
+  - action: ALWAYS
+    rule: "Handle connection errors (57P01, ECONNRESET) by resetting isConnected flag for reconnection"
+
+anti_patterns:
+  - "Runtime SSM fetching: ssm.getParameter() in handler code - adds $25/month and 50-200ms latency"
+  - "Runtime Secrets Manager fetching - adds $40/month and 100-300ms latency"
+  - "Connection pools (new Pool({max: 10})) - Lambda containers are single-concurrency, pools waste memory"
+  - "New connection every request with client.end() - throws away warm connection, 20-100ms penalty each time"
+  - "Using client without validating connection is still alive"
+  - "Storing SSM parameter names in env vars then fetching at runtime"
+
+examples:
+  sam_env_vars: |
+    # SAM Template - resolve at deployment, zero runtime cost
+    Globals:
+      Function:
+        Runtime: nodejs18.x
+        Environment:
+          Variables:
+            DB_HOST: '{{resolve:ssm:app-db-host:1}}'
+            DB_NAME: '{{resolve:ssm:app-db-name:1}}'
+            DB_USER: '{{resolve:ssm:app-db-user:1}}'
+            DB_PASSWORD: '{{resolve:ssm-secure:app-db-pass:1}}'
+            DB_PORT: '{{resolve:ssm:app-db-port:1}}'
+            AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+
+  cached_client_pattern: |
+    const { Client } = require('pg');
+
+    let client = null;
+    let isConnected = false;
+
+    async function getClient() {
+      if (client && isConnected) {
+        try {
+          await client.query('SELECT 1');
+          return client;
+        } catch (e) {
+          console.log('Connection lost, reconnecting...');
+          isConnected = false;
+        }
+      }
+
+      client = new Client({
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        port: process.env.DB_PORT || 5432,
+        connectionTimeoutMillis: 5000,
+        query_timeout: 10000,
+        statement_timeout: 10000,
+        idle_in_transaction_session_timeout: 10000
+      });
+
+      await client.connect();
+      isConnected = true;
+      return client;
+    }
+
+  execute_query: |
+    async function executeQuery(sql, params = []) {
+      const dbClient = await getClient();
+      try {
+        return await dbClient.query(sql, params);
+      } catch (error) {
+        if (error.code === '57P01' || error.code === 'ECONNRESET') {
+          isConnected = false;
+        }
+        throw error;
+      }
+    }
+
+  lambda_handler: |
+    const { executeQuery } = require('./dbClient');
+
+    exports.handler = async (event) => {
+      try {
+        const result = await executeQuery(
+          'SELECT * FROM users WHERE company_id = $1',
+          [event.queryStringParameters?.companyId]
+        );
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: result.rows, count: result.rowCount })
+        };
+      } catch (error) {
+        console.error('Handler error:', error);
+        return { statusCode: 500, body: JSON.stringify({ error: 'Internal server error' }) };
+      }
+    };
+
+context: |
+  Lambda functions handle one request per container at a time. Connection pools exist
+  for concurrent access, which Lambda does not have within a single container. Warm
+  containers reuse module-scoped variables, so caching a single client saves 20-100ms
+  on subsequent invocations. Environment variables resolved via {{resolve:ssm:}} are
+  injected at deployment for zero runtime cost. Runtime SSM calls add both latency
+  (50-200ms) and cost ($0.05 per 10,000 calls). This is the foundational database
+  pattern for all Lambda functions in the organization.
+
+tags:
+  - lambda
+  - database
+  - postgresql
+  - ssm
+  - connection-management
+  - cost-optimization
+  - sam-template

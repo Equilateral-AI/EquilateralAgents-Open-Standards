@@ -1,0 +1,149 @@
+id: sustainability
+category: well-architected
+priority: 30
+updated: 2026-02-01
+
+rules:
+  - action: USE
+    rule: "ARM64/Graviton2 processors for Lambda and compute - 20% more energy efficient than x86"
+  - action: PREFER
+    rule: "Serverless architectures (Lambda, Aurora Serverless, OpenSearch Serverless) for zero idle compute"
+  - action: ALWAYS
+    rule: "Right-size Lambda memory and timeout to actual usage - target >70% memory utilization"
+  - action: USE
+    rule: "Latest runtime versions (nodejs20.x) for better performance per watt"
+  - action: ALWAYS
+    rule: "Implement S3 lifecycle policies to transition and expire data - Standard-IA at 30d, Glacier at 90d, delete at 365d"
+  - action: ALWAYS
+    rule: "Compress API responses and stored data with gzip"
+  - action: PREFER
+    rule: "Managed services over self-managed - AWS optimizes shared infrastructure efficiency"
+  - action: ALWAYS
+    rule: "Keep all resources in the same region to minimize cross-region data transfer"
+  - action: USE
+    rule: "CloudFront edge caching with compression to reduce origin requests and data transfer"
+  - action: PREFER
+    rule: "Specific SDK imports (@aws-sdk/client-s3) over entire SDK (aws-sdk) to minimize package size"
+  - action: USE
+    rule: "Content-addressable storage with deduplication to avoid storing duplicate data"
+  - action: USE
+    rule: "Lazy loading for heavy modules - only require when actually needed"
+  - action: ALWAYS
+    rule: "Run staged CI/CD tests - lint and unit always, integration on PR, e2e on merge to main"
+
+anti_patterns:
+  - "Default 128MB Lambda memory without profiling - often wastes time on undersized compute"
+  - "Maximum 900s Lambda timeout when function completes in 5s"
+  - "Importing entire AWS SDK when only one service client is needed"
+  - "No S3 lifecycle policy - infinite data retention with no tiering"
+  - "Cross-region data transfer between compute and storage"
+  - "Running full E2E test suite on every commit instead of staged testing"
+  - "Using x86_64 when ARM64 is compatible"
+  - "Uncompressed API responses and stored data"
+
+examples:
+  efficient_compute: |
+    Globals:
+      Function:
+        Architectures:
+          - arm64  # Graviton2, 20% more efficient
+        Runtime: nodejs20.x  # Latest runtime
+
+    Function:
+      Type: AWS::Serverless::Function
+      Properties:
+        MemorySize: 512    # Tested optimal, not default
+        Timeout: 10        # Actual need, not max 900
+        EphemeralStorage:
+          Size: 512        # Only if needed
+
+  compressed_response: |
+    const zlib = require('zlib');
+
+    const response = {
+      statusCode: 200,
+      headers: { 'Content-Encoding': 'gzip' },
+      body: zlib.gzipSync(JSON.stringify(data)).toString('base64'),
+      isBase64Encoded: true
+    };
+
+  data_lifecycle: |
+    Bucket:
+      Properties:
+        LifecycleConfiguration:
+          Rules:
+            - Id: TransitionOldData
+              Status: Enabled
+              Transitions:
+                - StorageClass: STANDARD_IA
+                  TransitionInDays: 30
+                - StorageClass: GLACIER
+                  TransitionInDays: 90
+            - Id: ExpireOldLogs
+              Status: Enabled
+              ExpirationInDays: 365
+              Prefix: logs/
+
+  specific_imports: |
+    // GOOD - specific import, smaller package
+    const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+    // BAD - entire SDK, larger package
+    // const AWS = require('aws-sdk');
+
+  lazy_loading: |
+    let heavyModule;
+
+    async function processIfNeeded(data) {
+      if (needsHeavyProcessing(data)) {
+        heavyModule = heavyModule || require('heavy-module');
+        return heavyModule.process(data);
+      }
+      return simpleProcess(data);
+    }
+
+  deduplication: |
+    const crypto = require('crypto');
+
+    function getContentHash(data) {
+      return crypto.createHash('sha256').update(data).digest('hex');
+    }
+
+    async function storeIfNew(data) {
+      const hash = getContentHash(data);
+      const exists = await checkExists(hash);
+      if (!exists) {
+        await store(hash, data);
+      }
+      return hash;
+    }
+
+  staged_testing: |
+    stages:
+      - lint         # Fast, always
+      - unit-test    # Fast, always
+      - integration  # Slower, on PR
+      - e2e          # Slowest, on merge to main
+
+context: |
+  Sustainability is the newest AWS Well-Architected pillar, focused on minimizing the
+  environmental impact of cloud workloads. Key strategies are maximizing utilization (no idle
+  compute via serverless), using efficient hardware (Graviton2/ARM64), minimizing data
+  transfer (same-region resources, edge caching, compression), and managing data lifecycle
+  (tiering, expiration, deduplication). Track efficiency metrics like requests per compute
+  hour and data processed per dollar. Consider low-carbon AWS regions (Oregon, Ireland,
+  Montreal) for non-latency-sensitive workloads. Review quarterly: Lambda memory utilization,
+  storage lifecycle effectiveness, cache hit rates, idle resources, and cross-region traffic.
+  Use AWS Customer Carbon Footprint Tool to measure actual impact.
+
+tags:
+  - sustainability
+  - well-architected
+  - arm64
+  - graviton
+  - serverless
+  - compression
+  - data-lifecycle
+  - energy-efficiency
+  - lazy-loading
+  - deduplication

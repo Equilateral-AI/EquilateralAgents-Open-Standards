@@ -1,0 +1,113 @@
+id: testing-principles
+category: core
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Test error states and failure scenarios before happy paths"
+  - action: NEVER
+    rule: "Use mocks in integration tests -- integration tests must use real dependencies"
+  - action: ALWAYS
+    rule: "Use coherent, realistic test data that reflects real-world relationships and constraints"
+  - action: ALWAYS
+    rule: "Test dependency failures, network timeouts, and resource exhaustion scenarios"
+  - action: ALWAYS
+    rule: "Establish and monitor performance baselines for critical operations"
+
+anti_patterns:
+  - "Only testing the happy path (e.g. 'should transfer money' without error cases)"
+  - "Using mocked database/services in integration tests -- just tests that mocks were called"
+  - "Incoherent test data (nonexistent foreign keys, negative quantities, impossible timestamps)"
+  - "No tests for what happens when dependencies fail"
+  - "No performance baseline -- cannot detect degradation"
+
+examples:
+  error_states_first: |
+    // Bad - only happy path
+    it('should transfer money', () => {
+        expect(transferMoney('a1', 'a2', 100).success).toBe(true);
+    });
+
+    // Good - errors first
+    describe('transferMoney errors', () => {
+        it('rejects insufficient funds', () => {
+            const result = transferMoney('a1', 'a2', 9999999);
+            expect(result.error.code).toBe('INSUFFICIENT_FUNDS');
+        });
+        it('rejects invalid account', () => {
+            expect(transferMoney('a1', 'invalid', 100).error.code).toBe('INVALID_ACCOUNT');
+        });
+        it('rollsback on partial failure', async () => {
+            mockAdd.mockRejectedValue(new Error('Network error'));
+            const before = getBalance('a1');
+            await transferMoney('a1', 'a2', 100);
+            expect(getBalance('a1')).toBe(before);
+        });
+    });
+
+  real_integration: |
+    beforeAll(async () => {
+        testDatabase = await createTestDatabase();
+        testEmailServer = await startTestEmailServer();
+    });
+
+    it('registers user in real database and sends real email', async () => {
+        await registerUser({ email: 'test@example.com', password: 'pass123' });
+
+        const userInDb = await testDatabase.query(
+            'SELECT * FROM users WHERE email = ?', ['test@example.com']
+        );
+        expect(userInDb.passwordHash).toBeDefined();
+
+        const emails = await testEmailServer.getEmails();
+        expect(emails[0].to).toBe('test@example.com');
+    });
+
+  coherent_test_data: |
+    beforeEach(async () => {
+        testCustomer = await createTestCustomer({ email: 'test@example.com' });
+        testProduct = await createTestProduct({ price: 29.99, inventory: 100 });
+    });
+
+    it('processes valid order', async () => {
+        const order = await createOrder({
+            customerId: testCustomer.customerId,
+            items: [{ productId: testProduct.productId, quantity: 2 }]
+        });
+        expect(order.total).toBe(59.98);
+        expect(await getProduct(testProduct.productId).inventory).toBe(98);
+    });
+
+  performance_baseline: |
+    it('loads user profile in < 100ms', async () => {
+        const start = Date.now();
+        await getUserProfile('user_123');
+        expect(Date.now() - start).toBeLessThan(100);
+    });
+
+    it('handles 100 concurrent requests in < 5s', async () => {
+        const start = Date.now();
+        await Promise.all(Array.from({ length: 100 }, (_, i) => getUserProfile(`user_${i}`)));
+        expect(Date.now() - start).toBeLessThan(5000);
+    });
+
+context: |
+  Fundamental approaches to effective testing. Most code execution goes
+  through error paths, so test errors first. Integration tests must use
+  real databases, real APIs, and real services -- mocked integration tests
+  only verify mocks were called. When mocks are acceptable: external payment
+  gateways and expensive APIs, but also test against sandbox environments.
+  Test data must be coherent -- real foreign key references, valid quantities,
+  logical timestamps. Failure scenarios to cover: dependency failures (DB down,
+  API unavailable), network issues (timeouts, connection drops), resource
+  exhaustion (disk full, rate limits), data issues (corrupt data, missing
+  fields). Performance tests should use realistic data volumes (100, 10K,
+  100K+ records) and concurrent load (10, 100, 1000 users).
+
+tags:
+  - core
+  - testing
+  - integration
+  - performance
+  - error-handling

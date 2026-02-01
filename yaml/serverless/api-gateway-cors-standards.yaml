@@ -1,0 +1,100 @@
+id: api-gateway-cors-standards
+category: serverless
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: NEVER
+    rule: "Use DefaultAuthorizer in SAM templates - it applies auth to OPTIONS preflight requests, breaking CORS"
+  - action: ALWAYS
+    rule: "Set AddDefaultAuthorizerToCorsPreflight to false in API Auth configuration"
+  - action: ALWAYS
+    rule: "Use explicit per-function authorization via Auth.Authorizer on each protected function"
+  - action: USE
+    rule: "Wildcard AllowOrigin ('*') with AllowCredentials false for JWT/Cognito authentication"
+  - action: USE
+    rule: "Specific AllowOrigin domain with AllowCredentials true only for cookie/session-based authentication"
+  - action: ALWAYS
+    rule: "Store JWT tokens in localStorage, not cookies, for API calls"
+  - action: ALWAYS
+    rule: "Test OPTIONS preflight request returns 200 OK before declaring deployment complete"
+  - action: ALWAYS
+    rule: "Include Authorization in AllowHeaders for CORS configuration"
+
+anti_patterns:
+  - "Setting DefaultAuthorizer at the Api.Auth level - blocks OPTIONS preflight with 401"
+  - "Using AllowCredentials true with wildcard origin - browser rejects this combination"
+  - "Omitting OPTIONS from AllowMethods in CORS configuration"
+  - "Deploying without testing CORS preflight with curl OPTIONS request"
+  - "Debugging auth code when the real problem is CORS preflight failure"
+
+examples:
+  correct_sam_cors_config: |
+    Api:
+      Type: AWS::Serverless::Api
+      Properties:
+        StageName: dev
+        Cors:
+          AllowMethods: "'GET, POST, PUT, DELETE, OPTIONS'"
+          AllowHeaders: "'Content-Type, X-Amz-Date, Authorization, X-Api-Key'"
+          AllowOrigin: "'*'"
+          AllowCredentials: false
+          MaxAge: 86400
+        Auth:
+          Authorizers:
+            CognitoAuthorizer:
+              UserPoolArn: !Ref CognitoUserPoolArn
+              Identity:
+                Header: Authorization
+          AddDefaultAuthorizerToCorsPreflight: false
+
+  per_function_auth: |
+    GetUsersFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        Events:
+          GetUsers:
+            Type: Api
+            Properties:
+              Path: /users
+              Method: GET
+              RestApiId: !Ref Api
+              Auth:
+                Authorizer: CognitoAuthorizer  # Explicit per-function
+
+  jwt_token_storage: |
+    // Store in localStorage for JWT auth
+    const token = session.getAccessToken().getJwtToken();
+    localStorage.setItem('token', token);
+
+    // Use in API calls
+    fetch('/api/endpoint', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+  preflight_test: |
+    curl -X OPTIONS "https://your-api.amazonaws.com/dev/endpoint" \
+      -H "Origin: https://any-origin.com" \
+      -H "Access-Control-Request-Method: GET" \
+      -H "Access-Control-Request-Headers: authorization,content-type" \
+      -I
+
+context: |
+  CORS preflight is a browser security mechanism where an OPTIONS request is sent before
+  the actual API call. If the API Gateway applies authentication to OPTIONS requests
+  (via DefaultAuthorizer), the preflight fails with 401 and the browser blocks the real
+  request. This manifests as "Missing Authentication Token" or "No Access-Control-Allow-Origin
+  header" errors. For JWT-based auth (Cognito, Auth0), wildcard origin is safe because
+  security is enforced by token validation, not CORS. CORS is browser-side enforcement only.
+
+tags:
+  - cors
+  - api-gateway
+  - cognito
+  - sam-template
+  - authentication
+  - jwt
+  - preflight

@@ -1,0 +1,112 @@
+id: operational-excellence
+category: well-architected
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Define all infrastructure as code using SAM/CloudFormation templates"
+  - action: ALWAYS
+    rule: "Use structured JSON logging with timestamp, level, requestId, service, action, and duration fields"
+  - action: ALWAYS
+    rule: "Enable X-Ray tracing for all Lambda functions and API Gateway"
+  - action: ALWAYS
+    rule: "Set CloudWatch alarms for error rate (>1%), latency P99 (>3s), and DLQ message count (>0)"
+  - action: ALWAYS
+    rule: "Implement automated CI/CD pipeline with lint, test, build, deploy-dev, integration, and deploy-prod stages"
+  - action: ALWAYS
+    rule: "Publish custom CloudWatch metrics for business KPIs (orders processed, payment success/failure)"
+  - action: ALWAYS
+    rule: "Maintain runbooks for deployment, incident response, and maintenance procedures"
+  - action: ALWAYS
+    rule: "Document significant architecture decisions using ADR format"
+  - action: PREFER
+    rule: "Small, frequent, reversible deployments with feature flags and blue/green via CodeDeploy"
+  - action: ALWAYS
+    rule: "Conduct post-incident reviews with timeline, impact, root cause, and action items"
+  - action: ALWAYS
+    rule: "Verify deployments with automated smoke tests checking API health, database connectivity, and integrations"
+
+anti_patterns:
+  - "Unstructured console.log statements instead of JSON-formatted logs"
+  - "Manual infrastructure changes outside of IaC templates"
+  - "Deploying without automated tests in the pipeline"
+  - "No CloudWatch alarms on critical metrics"
+  - "Skipping post-incident reviews after outages"
+  - "Missing API documentation (no OpenAPI spec)"
+
+examples:
+  structured_logging: |
+    const log = {
+      timestamp: new Date().toISOString(),
+      level: 'INFO',
+      requestId: context.awsRequestId,
+      service: 'payment-service',
+      action: 'processPayment',
+      userId: event.userId,
+      duration: 234,
+      success: true
+    };
+    console.log(JSON.stringify(log));
+
+  xray_tracing: |
+    # SAM template
+    Globals:
+      Function:
+        Tracing: Active
+      Api:
+        TracingEnabled: true
+
+  cloudwatch_alarm: |
+    HighErrorRateAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: !Sub '${AWS::StackName}-high-error-rate'
+        MetricName: Errors
+        Namespace: AWS/Lambda
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 2
+        Threshold: 10
+        ComparisonOperator: GreaterThanThreshold
+        AlarmActions:
+          - !Ref AlertSNSTopic
+
+  ci_cd_pipeline: |
+    stages:
+      - lint          # ESLint, security scan
+      - test          # Unit + integration tests
+      - build         # SAM build
+      - deploy-dev    # Auto-deploy to dev
+      - integration   # E2E tests
+      - deploy-prod   # Manual approval + deploy
+
+  graceful_degradation: |
+    async function getDataWithFallback(primarySource, fallbackSource) {
+      try {
+        return await primarySource.getData();
+      } catch (error) {
+        console.warn('Primary source failed, using fallback', { error: error.message });
+        return await fallbackSource.getData();
+      }
+    }
+
+context: |
+  Operational Excellence is an AWS Well-Architected pillar focused on running and monitoring
+  systems to deliver business value. Core practices include infrastructure as code, structured
+  observability (logs, metrics, traces), automated pipelines with quality gates, and a culture
+  of continuous improvement through incident reviews. Log levels are ERROR (immediate attention),
+  WARN (degraded but functional), INFO (business events), and DEBUG (development only). All
+  Lambda functions should have X-Ray active and custom subsegments for business logic tracing.
+  Deployments should be small, frequent, and reversible with automated verification.
+
+tags:
+  - operational-excellence
+  - well-architected
+  - observability
+  - logging
+  - xray
+  - cloudwatch
+  - ci-cd
+  - runbooks
+  - incident-response

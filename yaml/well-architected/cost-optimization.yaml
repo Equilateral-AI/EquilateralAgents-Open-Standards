@@ -1,0 +1,118 @@
+id: cost-optimization
+category: well-architected
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Tag all resources with Project, Environment, Owner, and CostCenter"
+  - action: PREFER
+    rule: "Serverless (Lambda, API Gateway, S3) over fixed-cost infrastructure for variable workloads"
+  - action: ALWAYS
+    rule: "Use environment-appropriate sizing - db.t4g.micro for dev, db.r6g.large for prod"
+  - action: USE
+    rule: "ARM64/Graviton2 architecture for Lambda functions - 20% cheaper than x86"
+  - action: NEVER
+    rule: "Fetch SSM parameters at runtime in Lambda - use {{resolve:ssm:}} in SAM templates"
+  - action: ALWAYS
+    rule: "Set CloudWatch log retention - 7 days dev, 14 days staging, 30-90 days prod"
+  - action: PREFER
+    rule: "CloudWatch metric filters from logs over custom putMetricData SDK calls"
+  - action: ALWAYS
+    rule: "Set AWS Budgets with alerts at 80% threshold for each project"
+  - action: USE
+    rule: "S3 lifecycle policies to transition data: Standard-IA at 30 days, Glacier at 90 days"
+  - action: PREFER
+    rule: "Managed services (Cognito, OpenSearch, CloudWatch) over custom-built equivalents"
+  - action: ALWAYS
+    rule: "Validate API requests at API Gateway level to avoid unnecessary Lambda invocations"
+  - action: USE
+    rule: "Reserved instances for stable production RDS workloads - 30-60% savings"
+
+anti_patterns:
+  - "Running dev databases with prod-sized instances (db.r6g.large for dev)"
+  - "Leaving CloudWatch logs at infinite retention"
+  - "Using putMetricData when a metric filter from logs would suffice"
+  - "No resource tagging - unable to attribute costs"
+  - "Running dev/test resources 24/7 without scheduled scaling"
+  - "Using x86_64 Lambda when ARM64 is compatible"
+
+examples:
+  environment_sizing: |
+    Conditions:
+      IsProd: !Equals [!Ref Environment, prod]
+
+    Resources:
+      Database:
+        Type: AWS::RDS::DBInstance
+        Properties:
+          DBInstanceClass: !If [IsProd, db.r6g.large, db.t4g.micro]
+          MultiAZ: !If [IsProd, true, false]
+          BackupRetentionPeriod: !If [IsProd, 30, 1]
+
+  tagging_strategy: |
+    Tags:
+      Project: !Ref ProjectName
+      Environment: !Ref Environment
+      Owner: !Ref OwnerEmail
+      CostCenter: !Ref CostCenter
+
+  s3_lifecycle: |
+    LifecycleConfiguration:
+      Rules:
+        - Id: TransitionToIA
+          Status: Enabled
+          Transitions:
+            - StorageClass: STANDARD_IA
+              TransitionInDays: 30
+            - StorageClass: GLACIER
+              TransitionInDays: 90
+        - Id: ExpireOldVersions
+          Status: Enabled
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 30
+
+  log_retention: |
+    LogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        RetentionInDays: 30  # Not infinite
+
+  budget_alarm: |
+    MonthlyBudget:
+      Type: AWS::Budgets::Budget
+      Properties:
+        Budget:
+          BudgetName: !Sub '${ProjectName}-monthly'
+          BudgetLimit:
+            Amount: 100
+            Unit: USD
+          TimeUnit: MONTHLY
+          BudgetType: COST
+        NotificationsWithSubscribers:
+          - Notification:
+              NotificationType: ACTUAL
+              ComparisonOperator: GREATER_THAN
+              Threshold: 80
+            Subscribers:
+              - SubscriptionType: EMAIL
+                Address: !Ref AlertEmail
+
+context: |
+  Cost optimization is one of the six pillars of the AWS Well-Architected Framework. The
+  key principle is pay-per-use: avoid fixed costs in dev/test, use serverless for variable
+  workloads, and right-size all resources. Track cost per transaction as a business KPI.
+  Review costs weekly for anomalies, monthly for optimization opportunities, and quarterly
+  for reserved capacity and savings plans. Lambda Power Tuning helps find optimal memory
+  configuration where higher memory often reduces total cost through faster execution.
+  Cross-references lambda_database_standards for SSM and connection cost patterns.
+
+tags:
+  - cost
+  - well-architected
+  - tagging
+  - serverless
+  - s3-lifecycle
+  - budgets
+  - reserved-instances
+  - arm64

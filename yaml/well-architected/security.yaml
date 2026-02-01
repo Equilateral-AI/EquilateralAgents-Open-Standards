@@ -1,0 +1,175 @@
+id: security
+category: well-architected
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Apply least-privilege IAM policies - specific actions on specific resources, never Action * Resource *"
+  - action: ALWAYS
+    rule: "Log all security-relevant events as structured JSON with timestamp, action, userId, sourceIp, outcome"
+  - action: ALWAYS
+    rule: "Enable CloudTrail with multi-region trail and log file validation"
+  - action: ALWAYS
+    rule: "Encrypt data at rest (S3 SSE-KMS, RDS StorageEncrypted) and in transit (HTTPS only)"
+  - action: ALWAYS
+    rule: "Validate all inputs with strict schemas (Joi) and strip unknown fields"
+  - action: ALWAYS
+    rule: "Use parameterized queries for all database operations - never string interpolation"
+  - action: NEVER
+    rule: "Hardcode secrets in source code - use SSM Parameter Store with {{resolve:ssm-secure:}} in SAM"
+  - action: ALWAYS
+    rule: "Rotate secrets automatically using Secrets Manager rotation schedules"
+  - action: ALWAYS
+    rule: "Protect APIs with WAF using AWS managed rule sets and IP-based rate limiting"
+  - action: ALWAYS
+    rule: "Configure Cognito with minimum 12-character passwords, MFA optional, and email recovery"
+  - action: ALWAYS
+    rule: "Set explicit per-function API Gateway authorization - never use DefaultAuthorizer"
+  - action: ALWAYS
+    rule: "Sanitize all user-generated content output with DOMPurify or equivalent"
+  - action: NEVER
+    rule: "Allow direct production database access without approval - use Session Manager, not SSH"
+
+anti_patterns:
+  - "IAM policy with Effect Allow, Action *, Resource * - grants god-mode access"
+  - "Hardcoded database passwords or API keys in source code"
+  - "SQL injection via string interpolation in queries"
+  - "Unvalidated user input passed directly to business logic"
+  - "Unencrypted S3 buckets or RDS instances"
+  - "No WAF protection on public-facing APIs"
+  - "Using SSH for server access instead of Systems Manager Session Manager"
+  - "Returning detailed validation errors or stack traces to clients"
+
+examples:
+  least_privilege_iam: |
+    LambdaExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Policies:
+          - PolicyName: MinimalAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:PutItem
+                    - dynamodb:Query
+                  Resource: !GetAtt OrdersTable.Arn
+                - Effect: Allow
+                  Action: ssm:GetParameter
+                  Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Environment}/app/*'
+
+  input_validation: |
+    const Joi = require('joi');
+
+    const orderSchema = Joi.object({
+      productId: Joi.string().uuid().required(),
+      quantity: Joi.number().integer().min(1).max(100).required(),
+      email: Joi.string().email().required(),
+      notes: Joi.string().max(500).allow('')
+    });
+
+    async function handler(event) {
+      const body = JSON.parse(event.body);
+      const { error, value } = orderSchema.validate(body, {
+        stripUnknown: true
+      });
+      if (error) {
+        return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input' }) };
+      }
+      return processOrder(value);  // Use validated value, not raw body
+    }
+
+  encryption_at_rest: |
+    DataBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: aws:kms
+                KMSMasterKeyID: !Ref DataEncryptionKey
+
+    Database:
+      Type: AWS::RDS::DBInstance
+      Properties:
+        StorageEncrypted: true
+        KmsKeyId: !Ref DatabaseEncryptionKey
+
+  waf_configuration: |
+    WebACL:
+      Type: AWS::WAFv2::WebACL
+      Properties:
+        DefaultAction:
+          Allow: {}
+        Rules:
+          - Name: AWSManagedRulesCommonRuleSet
+            Priority: 1
+            OverrideAction:
+              None: {}
+            Statement:
+              ManagedRuleGroupStatement:
+                VendorName: AWS
+                Name: AWSManagedRulesCommonRuleSet
+          - Name: RateLimitRule
+            Priority: 2
+            Action:
+              Block: {}
+            Statement:
+              RateBasedStatement:
+                Limit: 2000
+                AggregateKeyType: IP
+
+  cognito_user_pool: |
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 12
+            RequireLowercase: true
+            RequireUppercase: true
+            RequireNumbers: true
+            RequireSymbols: true
+        MfaConfiguration: OPTIONAL
+        EnabledMfas:
+          - SOFTWARE_TOKEN_MFA
+        AccountRecoverySetting:
+          RecoveryMechanisms:
+            - Name: verified_email
+              Priority: 1
+
+  secret_rotation: |
+    SecretRotation:
+      Type: AWS::SecretsManager::RotationSchedule
+      Properties:
+        SecretId: !Ref DatabaseSecret
+        RotationRules:
+          AutomaticallyAfterDays: 30
+        RotationLambdaARN: !GetAtt RotationFunction.Arn
+
+context: |
+  Security is an AWS Well-Architected pillar focused on protecting information, systems, and
+  assets through risk assessment and mitigation. Defense in depth applies controls at every
+  layer: edge (WAF, CloudFront, Shield), API (authorization, throttling), compute (Lambda VPC,
+  security groups), data (encryption, access policies), and network (private subnets, NACLs).
+  All security events must be logged for traceability. Incident response follows detect,
+  contain, eradicate, recover, learn phases with severity levels P1 (data breach), P2
+  (vulnerability discovered), P3 (policy violation). Never expose internal errors or
+  validation details to clients. Cross-references cognito_authentication_standards and
+  api_gateway_cors_standards for auth patterns.
+
+tags:
+  - security
+  - well-architected
+  - iam
+  - encryption
+  - waf
+  - cognito
+  - input-validation
+  - sql-injection
+  - xss
+  - secrets-management
+  - cloudtrail

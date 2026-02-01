@@ -1,0 +1,131 @@
+id: cpp-geometric-algorithms-standards
+category: core
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: USE
+    rule: "Inclusive boundaries (<=, >=) by default for containment tests -- points on edges count as inside"
+  - action: ALWAYS
+    rule: "Handle all intersection cases: endpoints inside shape, line crosses edges, and segment fully contained"
+  - action: USE
+    rule: "Epsilon comparisons for floating-point equality -- never use direct == for computed values"
+  - action: ALWAYS
+    rule: "Document coordinate system assumptions: origin location, axis directions, units, and handedness"
+  - action: ALWAYS
+    rule: "Test degenerate cases: zero-size shapes, zero-length segments, negative dimensions"
+  - action: PREFER
+    rule: "Early exit optimizations -- check cheap bounding tests before expensive intersection tests"
+  - action: AVOID
+    rule: "Unnecessary sqrt() calls -- compare squared distances instead"
+  - action: ALWAYS
+    rule: "Use consistent boundary conventions across all shape types in the codebase"
+
+anti_patterns:
+  - "Exclusive boundaries (< >) for containment tests -- creates edge case bugs and gaps in spatial partitioning"
+  - "Only checking endpoint containment and edge crossings -- misses segments where both endpoints are on boundaries"
+  - "Direct float equality (a == b) for computed geometric values"
+  - "Mixing coordinate systems (screen pixels with world units) in the same calculation"
+  - "Undocumented boundary behavior (does contains() include or exclude the edge?)"
+  - "Inconsistent boundary conventions between shapes (Rectangle inclusive-left exclusive-right, Circle fully inclusive)"
+  - "Running expensive intersection tests without early-exit bounding checks"
+  - "Using sqrt() when squared distance comparison suffices"
+
+examples:
+  inclusive_containment: |
+    // Correct: Inclusive boundary test
+    bool Rectangle::contains(const Vec2& point) const {
+        return point.x >= minX && point.x <= maxX &&
+               point.y >= minY && point.y <= maxY;
+    }
+
+    // Wrong: Exclusive boundaries
+    bool Rectangle::contains(const Vec2& point) const {
+        return point.x > minX && point.x < maxX &&
+               point.y > minY && point.y < maxY;
+    }
+
+  line_intersection: |
+    // Correct: Handles all intersection cases
+    bool Rectangle::intersects(const Vec2& p0, const Vec2& p1) const {
+        // Case 1: Either endpoint is inside (or on boundary)
+        if (contains(p0) || contains(p1)) return true;
+
+        // Case 2: Line crosses any edge
+        Vec2 corners[4] = { {minX,minY}, {maxX,minY}, {maxX,maxY}, {minX,maxY} };
+        Vec2 hit;
+        for (int i = 0; i < 4; i++) {
+            if (lineSegmentIntersection(p0, p1, corners[i], corners[(i+1)%4], hit))
+                return true;
+        }
+        return false;
+    }
+
+  epsilon_comparison: |
+    // Wrong: Exact comparison
+    bool almostEqual(float a, float b) { return a == b; }
+
+    // Correct: Epsilon comparison
+    bool almostEqual(float a, float b, float epsilon = 1e-6f) {
+        return std::abs(a - b) < epsilon;
+    }
+
+    // Better: Relative epsilon for large values
+    bool almostEqual(float a, float b, float epsilon = 1e-6f) {
+        float diff = std::abs(a - b);
+        if (a == b) return true;
+        if (a == 0.0f || b == 0.0f || (std::abs(a) + std::abs(b) < epsilon))
+            return diff < epsilon;
+        return diff / std::min(std::abs(a) + std::abs(b),
+            std::numeric_limits<float>::max()) < epsilon;
+    }
+
+  early_exit: |
+    // Correct: Check cheap tests first
+    bool Circle::intersects(const Rectangle& rect) const {
+        Vec2 closestPoint = rect.closestPointTo(center);
+        if (center.distanceSquared(closestPoint) > radius * radius)
+            return false;
+        // More expensive containment tests...
+    }
+
+  squared_distance: |
+    // Correct: Compare squared distances (no sqrt)
+    float distSq = (p1 - p0).lengthSquared();
+    if (distSq < radiusSq) { /* inside circle */ }
+
+    // Wrong: Unnecessary sqrt
+    float dist = (p1 - p0).length();  // sqrt() is expensive
+    if (dist < radius) { /* inside circle */ }
+
+  coordinate_docs: |
+    /// Tests if a point is inside this rectangle.
+    ///
+    /// Coordinate system: Screen space (origin top-left, +Y down)
+    /// Boundary behavior: Inclusive (points on edges are inside)
+    ///
+    /// @param point Point in screen coordinates (pixels)
+    /// @return true if point is inside or on boundary
+    bool Rectangle::contains(const Vec2& point) const;
+
+context: |
+  Best practices for implementing geometric algorithms in C++ with focus on
+  correctness, performance, and numerical stability. Core principles:
+  boundary inclusion (be explicit), numerical stability (handle float edge
+  cases), degenerate cases (zero-size inputs), coordinate systems (document
+  assumptions), test coverage (every edge case must have a test). Inclusive
+  boundaries are the default because they match user expectations (clicking
+  edge of button should work), prevent gaps in spatial partitioning, and
+  are consistent with mathematical closed sets. Real-world case study:
+  OpenFrameworks ofRectangle::intersects bug (issue #4871) where function
+  only checked strictly-inside endpoints, missing boundary-on-boundary
+  line crossings. Testing checklist: interior, exterior, boundary, corner,
+  degenerate, negative, float precision, and performance cases.
+
+tags:
+  - core
+  - cpp
+  - geometry
+  - algorithms
+  - numerical-stability
+  - performance

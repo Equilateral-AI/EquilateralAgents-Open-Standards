@@ -1,0 +1,104 @@
+id: api-design-standards
+category: core
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Use consistent response format: { success: bool, data: T, metadata?: { timestamp, requestId } } for success; { success: false, error: { code, message, details? } } for errors"
+  - action: USE
+    rule: "Explicit, self-documenting field names -- avoid abbreviations (orderId not id, quantity not qty)"
+  - action: ALWAYS
+    rule: "Return specific errors with what/why/how-to-fix using structured error codes like CATEGORY_SPECIFIC_REASON"
+  - action: ALWAYS
+    rule: "Version APIs explicitly from day one using URL path, header, or query param"
+  - action: USE
+    rule: "Standardized pagination across all list endpoints with items, page, pageSize, totalCount, hasNextPage"
+  - action: ALWAYS
+    rule: "Validate all inputs and return a specific error per validation failure with field, code, and message"
+
+anti_patterns:
+  - "Inconsistent response shapes across endpoints (bare objects, arrays, plain strings)"
+  - "Ambiguous field names like 'id', 'status', 'date', 'price' without context prefix"
+  - "Generic error messages like 'Bad request' or 'Error' without code or details"
+  - "APIs without versioning strategy -- forces breaking changes on all clients"
+  - "Returning a single generic validation error instead of per-field errors"
+
+examples:
+  consistent_response: |
+    // Success
+    { "success": true, "data": { "userId": "user_123" }, "metadata": { "requestId": "req_abc" } }
+
+    // Error
+    { "success": false, "error": { "code": "VALIDATION_ERROR", "message": "Invalid email" } }
+
+  explicit_field_naming: |
+    // Bad
+    { "id": "123", "status": "active", "date": "2025-10-02", "price": 99.99, "qty": 5 }
+
+    // Good
+    {
+        "orderId": "order_123",
+        "orderStatus": "active",
+        "createdAt": "2025-10-02T12:00:00Z",
+        "totalPriceUSD": 99.99,
+        "quantity": 5
+    }
+
+  proper_error_handling: |
+    {
+        "success": false,
+        "error": {
+            "code": "INVALID_EMAIL_FORMAT",
+            "message": "Email must be user@domain.com format",
+            "details": { "field": "email", "providedValue": "john.doe@" }
+        }
+    }
+
+  pagination: |
+    {
+        "success": true,
+        "data": {
+            "items": [],
+            "pagination": {
+                "page": 1,
+                "pageSize": 20,
+                "totalCount": 150,
+                "hasNextPage": true
+            }
+        }
+    }
+
+  validation_errors: |
+    {
+        "success": false,
+        "error": {
+            "code": "VALIDATION_FAILED",
+            "message": "Request validation failed",
+            "details": {
+                "errors": [
+                    { "field": "email", "code": "INVALID_FORMAT", "message": "Email must be valid" },
+                    { "field": "age", "code": "OUT_OF_RANGE", "message": "Age 0-120", "min": 0, "max": 120 }
+                ]
+            }
+        }
+    }
+
+context: |
+  Technology-agnostic principles for building great APIs. Every endpoint should
+  return a predictable response shape. Field names should be self-documenting.
+  Errors should be specific and actionable with structured codes. APIs should
+  be versioned from day one. Pagination and validation should follow a single
+  standard across the entire surface area. Error code categories: VALIDATION_*
+  (400), AUTH_* (401/403), NOT_FOUND_* (404), CONFLICT_* (409), RATE_LIMIT_*
+  (429), INTERNAL_* (500). Naming conventions: booleans use is/has/can prefix,
+  dates use At suffix, IDs use entity prefix, money includes currency.
+
+tags:
+  - core
+  - api
+  - rest
+  - error-handling
+  - validation
+  - pagination
+  - versioning

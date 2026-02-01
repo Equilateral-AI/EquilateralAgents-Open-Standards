@@ -1,0 +1,141 @@
+id: performance-efficiency
+category: well-architected
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: PREFER
+    rule: "Managed services (OpenSearch, SageMaker, ElastiCache, SQS) over self-managed equivalents"
+  - action: USE
+    rule: "ARM64/Graviton2 architecture for 20% better price/performance"
+  - action: ALWAYS
+    rule: "Right-size Lambda memory using Power Tuning tool - 1769 MB equals 1 vCPU"
+  - action: ALWAYS
+    rule: "Initialize database clients and SDK clients outside the handler for connection reuse on warm starts"
+  - action: USE
+    rule: "Provisioned concurrency for latency-sensitive Lambda functions"
+  - action: ALWAYS
+    rule: "Cache API Gateway GET responses for frequently accessed endpoints"
+  - action: ALWAYS
+    rule: "Paginate all list endpoints with cursor-based pagination"
+  - action: ALWAYS
+    rule: "Use parameterized queries with specific column selection and LIMIT clauses"
+  - action: PREFER
+    rule: "Parallel execution (Promise.all) for independent operations over sequential awaits"
+  - action: USE
+    rule: "SQS with batch processing for async workloads - return batchItemFailures for partial retry"
+  - action: USE
+    rule: "Read replicas to route read traffic away from the writer endpoint"
+  - action: ALWAYS
+    rule: "Enable API response compression for payloads over 1KB"
+  - action: ALWAYS
+    rule: "Monitor P50, P90, P99 latency, cold start percentage, and cache hit ratio"
+
+anti_patterns:
+  - "SELECT * with no LIMIT on database queries"
+  - "String interpolation in SQL queries instead of parameterized queries"
+  - "Sequential awaits for independent async operations instead of Promise.all"
+  - "Default 128MB Lambda memory without profiling actual requirements"
+  - "No caching strategy - every request hits the database"
+  - "Returning all fields when client only needs a subset"
+
+examples:
+  lambda_memory_config: |
+    # I/O bound - lower memory sufficient
+    ReadFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        MemorySize: 512
+        Timeout: 30
+
+    # CPU bound - higher memory for more CPU
+    ProcessFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        MemorySize: 1769  # 1 vCPU
+        Timeout: 60
+
+  cold_start_optimization: |
+    const { Client } = require('pg');
+    let client;
+
+    async function getClient() {
+      if (!client) {
+        client = new Client(/* config */);
+        await client.connect();
+      }
+      return client;
+    }
+
+    exports.handler = async (event) => {
+      const db = await getClient();  // Reuse warm connection
+    };
+
+  api_caching: |
+    Api:
+      Type: AWS::Serverless::Api
+      Properties:
+        CacheClusterEnabled: true
+        CacheClusterSize: '0.5'
+        MethodSettings:
+          - ResourcePath: /products
+            HttpMethod: GET
+            CachingEnabled: true
+            CacheTtlInSeconds: 300
+
+  cursor_pagination: |
+    async function listOrders(userId, cursor, limit = 20) {
+      const query = `
+        SELECT id, created_at, total
+        FROM orders
+        WHERE user_id = $1 AND id > $2
+        ORDER BY id
+        LIMIT $3
+      `;
+      const orders = await client.query(query, [userId, cursor || 0, limit + 1]);
+      const hasMore = orders.length > limit;
+      const items = orders.slice(0, limit);
+      const nextCursor = hasMore ? items[items.length - 1].id : null;
+      return { items, nextCursor };
+    }
+
+  parallel_execution: |
+    // GOOD - parallel independent operations
+    const [user, orders, recommendations] = await Promise.all([
+      getUser(userId),
+      getOrders(userId),
+      getRecommendations(userId)
+    ]);
+
+  batch_processing: |
+    exports.handler = async (event) => {
+      const results = await Promise.all(
+        event.Records.map(record => processRecord(record))
+      );
+      const failures = results
+        .filter(r => !r.success)
+        .map(r => ({ itemIdentifier: r.messageId }));
+      return { batchItemFailures: failures };
+    };
+
+context: |
+  Performance Efficiency is an AWS Well-Architected pillar focused on using compute resources
+  efficiently and maintaining efficiency as demand changes. Lambda memory directly controls
+  CPU allocation (1769 MB = 1 vCPU). Higher memory often reduces total cost due to faster
+  execution. ARM64/Graviton2 provides 20% better price/performance with the same functionality.
+  Caching should be applied at multiple layers: CloudFront edge, API Gateway, application-level
+  (NodeCache), and shared cache (ElastiCache/Redis). Use X-Ray to identify performance
+  bottlenecks. Match technology to workload type - compute-intensive needs more memory/CPU,
+  I/O-intensive benefits from async patterns and concurrent requests.
+
+tags:
+  - performance
+  - well-architected
+  - lambda
+  - caching
+  - arm64
+  - pagination
+  - async
+  - sqs
+  - read-replicas
+  - xray

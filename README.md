@@ -8,6 +8,34 @@ A curated collection of battle-tested development standards that work across any
 
 ---
 
+## YAML Format (New)
+
+All standards are now available in **machine-readable YAML format** in the `yaml/` directory. This enables:
+
+- **[MindMeld.dev](https://mindmeld.dev)** integration - automatic injection of relevant standards into AI coding sessions
+- **AI agent consumption** - Claude, Cursor, Copilot can parse rules directly without regex extraction
+- **Automated validation** - lint/check tools consume YAML natively
+
+```yaml
+# Example: yaml/development-principles.yaml
+id: development-principles
+category: core
+priority: 10
+rules:
+  - action: NEVER
+    rule: "Return mock data or fallback values from production code on failure"
+  - action: ALWAYS
+    rule: "Fail fast and loud -- make failures obvious and immediate"
+anti_patterns:
+  - "Returning mock/default objects in catch blocks to hide API failures"
+```
+
+The original markdown standards remain as human-readable reference. YAML is the canonical format for tooling.
+
+**Schema**: See [equilateral-standards-yaml/SCHEMA.yaml](https://github.com/JamesFord-HappyHippo/equilateral-standards-yaml/blob/main/SCHEMA.yaml)
+
+---
+
 ## 🎯 Philosophy
 
 Good software development isn't about following trends—it's about applying timeless principles that lead to quality outcomes. These standards represent lessons learned from building production systems at scale.
@@ -63,6 +91,45 @@ Configuring AI coding assistants for automatic enforcement:
 - Living documentation
 - Behavior verification
 
+### Serverless Standards
+AWS serverless patterns extracted from production:
+- Lambda database connection management
+- API Gateway CORS configuration
+
+### Well-Architected Standards
+AWS Well-Architected Framework applied to real systems:
+- Cost Optimization, Reliability, Security
+- Operational Excellence, Performance Efficiency, Sustainability
+
+### Agent & Runtime Standards
+AI agent and runtime control patterns:
+- Agent memory and context management
+- Codex runtime control and sandboxing
+
+### YAML Directory Structure
+
+```
+yaml/
+  development-principles.yaml
+  api-design-standards.yaml
+  cost-optimization-principles.yaml
+  testing-principles.yaml
+  ai-assistant-configuration.yaml
+  agent-memory-standards.yaml
+  codex-runtime-control-standards.yaml
+  cpp-geometric-algorithms-standards.yaml
+  serverless/
+    api-gateway-cors-standards.yaml
+    lambda-database-standards.yaml
+  well-architected/
+    cost-optimization.yaml
+    operational-excellence.yaml
+    performance-efficiency.yaml
+    reliability.yaml
+    security.yaml
+    sustainability.yaml
+```
+
 ---
 
 ## 🚀 Quick Start
@@ -71,10 +138,13 @@ Configuring AI coding assistants for automatic enforcement:
 
 ```bash
 # Option A: Add as git submodule (recommended)
-git submodule add https://github.com/JamesFord-HappyHippo/EquilateralAgents-Open-Standards.git .standards
+git submodule add https://github.com/Equilateral-AI/EquilateralAgents-Open-Standards.git .standards
 
 # Option B: Clone directly
-git clone https://github.com/JamesFord-HappyHippo/EquilateralAgents-Open-Standards.git
+git clone https://github.com/Equilateral-AI/EquilateralAgents-Open-Standards.git
+
+# Option C: Use with MindMeld (automatic injection)
+# Sign up at https://mindmeld.dev - standards are injected into your AI coding sessions automatically
 ```
 
 ### Step 2: Configure Your AI Coding Assistant

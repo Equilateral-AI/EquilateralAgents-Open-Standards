@@ -1,0 +1,103 @@
+id: agent-memory-standards
+category: core
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: USE
+    rule: "executeTaskWithMemory() for automatic execution tracking instead of manual recording"
+  - action: ALWAYS
+    rule: "Check suggestOptimalWorkflow() before complex tasks to leverage learned patterns"
+  - action: ALWAYS
+    rule: "Track costs and performance metrics in memory for optimization"
+  - action: ALWAYS
+    rule: "Reset memory when codebase architecture changes significantly"
+  - action: ALWAYS
+    rule: "Export memory before major refactorings as backup"
+  - action: NEVER
+    rule: "Store sensitive data in memory (passwords, API keys, tokens, PII)"
+  - action: NEVER
+    rule: "Rely on memory for critical decision-making without validation when confidence < 0.5"
+  - action: NEVER
+    rule: "Assume patterns from fewer than 10 executions are reliable"
+  - action: AVOID
+    rule: "Disabling memory without good reason -- most agents benefit from learning"
+  - action: NEVER
+    rule: "Expect cross-agent learning in open-core -- that is enterprise only"
+
+anti_patterns:
+  - "Recording API keys, passwords, or tokens in execution memory"
+  - "Trusting suggestions with low confidence scores without manual review"
+  - "Drawing conclusions from fewer than 10 recorded executions"
+  - "Committing .agent-memory/ directory to git (local learning only)"
+  - "Using open-core memory for cross-agent pattern sharing (enterprise feature)"
+  - "Ignoring declining success rates without investigating failure patterns"
+
+examples:
+  automatic_recording: |
+    class SecurityAgent extends BaseAgent {
+        async executeTask(task) {
+            const findings = await this.scanCode(task.files);
+            return { findings };
+        }
+    }
+
+    const agent = new SecurityAgent();
+    const result = await agent.executeTaskWithMemory({
+        taskType: 'security-scan',
+        description: 'Scan auth handlers',
+        files: ['src/handlers/auth.js']
+    });
+
+  workflow_suggestion: |
+    const suggestion = agent.suggestOptimalWorkflow({
+        taskType: 'deployment',
+        environment: 'production'
+    });
+
+    console.log(`Estimated duration: ${suggestion.estimatedDuration}ms`);
+    console.log(`Confidence: ${(suggestion.confidence * 100).toFixed(0)}%`);
+
+    if (suggestion.confidence < 0.5) {
+        console.log('Low confidence - consider manual review');
+    }
+
+  sanitized_recording: |
+    // Bad: Exposes API key
+    agent.recordExecution(
+        { taskType: 'deploy', apiKey: 'sk-1234567890' },
+        { success: true, duration: 10000 }
+    );
+
+    // Good: Sanitized
+    agent.recordExecution(
+        { taskType: 'deploy', target: 'production' },
+        { success: true, duration: 10000 }
+    );
+
+  memory_stats: |
+    const stats = agent.getMemoryStats();
+    console.log(`Agent: ${stats.agentId}`);
+    console.log(`Executions tracked: ${stats.executionCount}/${stats.maxExecutions}`);
+    console.log(`Success rate: ${(stats.patterns.successRate * 100).toFixed(1)}%`);
+    console.log(`Memory size: ${(stats.memorySize / 1024).toFixed(1)} KB`);
+
+context: |
+  Agent memory enables self-learning by tracking execution history,
+  identifying patterns, and optimizing performance over time. Open-core
+  memory is isolated per agent, file-based (.agent-memory/), limited to
+  last 100 executions. Enterprise adds multi-agent coordination, unlimited
+  database-backed history, semantic search, and cross-project learning.
+  Memory footprint: ~50 KB per agent (100 executions), 22 agents = ~1.1 MB.
+  Add .agent-memory/ to .gitignore. Reset memory when: architecture changes,
+  switching projects/branches, success rate drops unexpectedly, testing with
+  different configurations. Safe to store: task types, duration metrics,
+  success/failure status, performance patterns, cost estimates.
+
+tags:
+  - core
+  - agents
+  - memory
+  - self-learning
+  - performance
+  - open-core

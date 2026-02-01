@@ -1,0 +1,127 @@
+id: codex-runtime-control-standards
+category: serverless
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: ALWAYS
+    rule: "Use .codexrc.json and harness.policy.json as source of truth for runtime control -- not the standards manifest"
+  - action: USE
+    rule: "Allowlist mode for outbound network policy in production systems"
+  - action: ALWAYS
+    rule: "Set deny_on_violation to true -- fail-loud on policy violations"
+  - action: NEVER
+    rule: "Store actual secrets in runtime config files -- use ARN references or secret manager references only"
+  - action: NEVER
+    rule: "Use wildcard domains in production allowlists -- explicit domains only"
+  - action: ALWAYS
+    rule: "Ensure .codexrc.json and harness.policy.json are aligned (network_access and network.enabled must match)"
+  - action: ALWAYS
+    rule: "Run pre-flight validation script before launching Codex or deploying"
+  - action: USE
+    rule: "Progressive enhancement by environment: dev (permissive) -> sandbox (production-like) -> production (strict)"
+  - action: ALWAYS
+    rule: "Define resource limits (http_max_requests, http_concurrency, timeout_seconds) to prevent runaway consumption"
+
+anti_patterns:
+  - "Setting outbound_policy mode to 'open' in production -- allows any network access"
+  - "Setting deny_on_violation to false in production -- hides policy violations"
+  - "Storing actual API keys or passwords in .codexrc.json credentials block"
+  - "Using wildcard domains (*.example.com) in production allowlists"
+  - "Updating manifest.json expecting it to change runtime behavior (it does not)"
+  - "Mismatched network settings between .codexrc.json and harness.policy.json"
+  - "No resource limits -- allows runaway HTTP requests or unbounded timeouts"
+
+examples:
+  production_codexrc: |
+    {
+      "environment_context": {
+        "name": "production",
+        "network_access": "enabled",
+        "outbound_policy": {
+          "mode": "allowlist",
+          "dns_allow": [
+            "api.example.com",
+            "db.prod-region.provider.com",
+            "auth.example.com"
+          ],
+          "port_allow": [443]
+        }
+      },
+      "limits": {
+        "http_max_requests": 100,
+        "http_concurrency": 4,
+        "timeout_seconds": 60
+      }
+    }
+
+  production_harness_policy: |
+    {
+      "network": {
+        "enabled": true,
+        "egress": {
+          "mode": "allowlist",
+          "domains": [
+            "api.example.com",
+            "db.prod-region.provider.com",
+            "auth.example.com"
+          ],
+          "ports": [443]
+        }
+      },
+      "observability": {
+        "http_log_bodies": false,
+        "http_log_headers": false,
+        "sample_rate": 0.1
+      },
+      "deny_on_violation": true
+    }
+
+  credentials_reference: |
+    // Bad - actual secrets
+    { "credentials": { "api_key": "sk-1234567890abcdef" } }
+
+    // Good - ARN references
+    {
+      "credentials": {
+        "secrets": {
+          "API_KEY_ARN": "arn:aws:secretsmanager:region:account:secret:api-key",
+          "DB_PASSWORD_ARN": "arn:aws:secretsmanager:region:account:secret:db-pwd"
+        }
+      }
+    }
+
+  handler_wrapper: |
+    const { wrapWithRuntimeContext } = require('./runtimeWrapper');
+
+    async function myHandler(event, context) {
+        console.log('Environment:', context.runtimeEnvironment.name);
+        console.log('Network Access:', context.runtimeEnvironment.network_access);
+        const apiUrl = context.environmentConfig?.api_url;
+        return { statusCode: 200, body: 'Success' };
+    }
+
+    exports.handler = wrapWithRuntimeContext(myHandler, { requireNetwork: true });
+
+context: |
+  Defines how to control Codex/AI agent runtime access, network connectivity,
+  and operational boundaries. Critical distinction: manifest.json is
+  documentation only (agents read it, harness ignores it); .codexrc.json
+  and harness.policy.json are the authoritative runtime configs that the
+  harness enforces. Three files: .codexrc.json (runtime environment config),
+  harness.policy.json (enforcement policy at socket/process level),
+  manifest.json (documentation). Four environment patterns: dev (permissive,
+  wildcards OK, deny_on_violation false), sandbox (production-like, minimal
+  wildcards, deny_on_violation true), production (strict, no wildcards,
+  HTTPS only, deny_on_violation true), air-gapped (localhost only, network
+  disabled at sandbox level). Change management: adding endpoints requires
+  updating both config files, validating, and smoke testing.
+
+tags:
+  - serverless
+  - security
+  - runtime
+  - network
+  - configuration
+  - codex
+  - ai-agents

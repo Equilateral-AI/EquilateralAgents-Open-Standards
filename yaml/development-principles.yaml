@@ -1,0 +1,92 @@
+id: development-principles
+category: core
+priority: 10
+updated: 2026-02-01
+
+rules:
+  - action: NEVER
+    rule: "Return mock data or fallback values from production code on failure"
+  - action: ALWAYS
+    rule: "Fail fast and loud -- make failures obvious and immediate with specific error messages"
+  - action: ALWAYS
+    rule: "Design error states before implementing happy paths"
+  - action: PREFER
+    rule: "Explicit code over clever implicit code -- intent should be obvious"
+  - action: USE
+    rule: "A single consistent error handling pattern throughout the application"
+  - action: ALWAYS
+    rule: "Optimize for humans who will maintain the code -- specific messages, context in logs, document non-obvious decisions"
+
+anti_patterns:
+  - "Returning mock/default objects in catch blocks to hide API failures"
+  - "Logging a warning and returning success when required data is missing"
+  - "Assigning fallback values to required fields (e.g. customerId = 'ANONYMOUS')"
+  - "Chained ternary or nullish-coalescing expressions that obscure intent"
+  - "Inconsistent error handling -- different patterns in different modules"
+  - "Vague error messages like 'Bad request' or 'Something went wrong'"
+
+examples:
+  fail_loud: |
+    // Bad - silent fallback to mock
+    async function getUserProfile(userId) {
+        try {
+            return await api.getUser(userId);
+        } catch (error) {
+            return { id: userId, name: 'Test User' }; // Hides failure
+        }
+    }
+
+    // Good - fail loud
+    async function getUserProfile(userId) {
+        try {
+            return await api.getUser(userId);
+        } catch (error) {
+            console.error('Failed to fetch user:', { userId, error: error.message });
+            throw new Error(`Unable to load user profile: ${error.message}`);
+        }
+    }
+
+  error_first_design: |
+    // Good - errors designed first
+    // Possible failures: INSUFFICIENT_FUNDS, INVALID_ACCOUNT, INVALID_AMOUNT, TRANSACTION_FAILED
+    function transferMoney(from, to, amount) {
+        if (!from || !to) {
+            return { success: false, error: 'INVALID_ACCOUNT', recovery: 'Verify account numbers' };
+        }
+        if (typeof amount !== 'number' || amount <= 0) {
+            return { success: false, error: 'INVALID_AMOUNT', recovery: 'Enter valid amount' };
+        }
+        if (getBalance(from) < amount) {
+            return { success: false, error: 'INSUFFICIENT_FUNDS', recovery: 'Add funds or reduce amount' };
+        }
+        // ... then happy path with transaction
+    }
+
+  consistent_error_handler: |
+    function handleError(error, context) {
+        console.error('Error:', { message: error.message, code: error.code, context });
+        monitoring.reportError(error, context);
+        return { success: false, error: error.code || 'INTERNAL_ERROR', message: error.message };
+    }
+
+    try {
+        return await riskyOperation();
+    } catch (error) {
+        return handleError(error, { operation: 'riskyOperation', userId });
+    }
+
+context: |
+  Universal principles for building quality software. Production code must
+  never hide failures with mock data or fallback values. Failures should be
+  visible, immediate, and specific so they get fixed. Error states should be
+  designed before happy paths because most production code paths are error
+  handling. Code should be readable by future maintainers -- explicit over
+  clever. Acceptable fallback: caching with explicit staleness markers and
+  time limits.
+
+tags:
+  - core
+  - error-handling
+  - fail-fast
+  - code-quality
+  - maintainability

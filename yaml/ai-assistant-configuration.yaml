@@ -1,0 +1,75 @@
+id: ai-assistant-configuration
+category: core
+priority: 20
+updated: 2026-02-01
+
+rules:
+  - action: USE
+    rule: "Personality prompts -- configure AI assistants with project standards, conventions, and war stories in a startup config file"
+  - action: ALWAYS
+    rule: "Frame AI as a specific role that aligns with project goals (quality dev, team lead, security engineer)"
+  - action: ALWAYS
+    rule: "Include good vs bad code examples -- AI learns from patterns better than abstract rules"
+  - action: USE
+    rule: "AI-native config format in project root, git-tracked (CLAUDE.md, .cursorrules, .continuerc.json, copilot-instructions.md)"
+  - action: ALWAYS
+    rule: "Update config after incidents, new patterns, or standards changes -- treat it as living documentation"
+  - action: PREFER
+    rule: "300-500 lines for config length -- specific enough to guide behavior, concise enough to scan"
+  - action: ALWAYS
+    rule: "Test and iterate -- verify config actually changes AI behavior with before/after tests"
+
+anti_patterns:
+  - "No AI configuration file in project -- AI reinvents solutions each session"
+  - "Config hidden in subdirectories instead of project root"
+  - "Config not version-controlled -- different team members get different behavior"
+  - "Vague theoretical rules instead of direct imperative instructions"
+  - "Config never updated after incidents or new patterns"
+  - "No trigger words for common anti-patterns (mock, fallback, any/unknown)"
+
+examples:
+  war_story_entry: |
+    ### "Never Use DefaultAuthorizer" - CORS Disaster
+    **What Happened:** Broke CORS preflight. 2 days debugging.
+    **Rule:** Use explicit per-function authorization only.
+    **Date:** 2025-09-03
+
+  trigger_words: |
+    "mock"     -> Hiding integration? Don't.
+    "fallback" -> Masking failure? Don't.
+    "any"      -> Escaping types? Use proper types.
+
+  config_structure: |
+    1. Role (1 paragraph)
+    2. Critical standards (5-10 principles with why)
+    3. Mandatory workflow (4-6 steps)
+    4. Banned patterns (5-10 examples)
+    5. Trigger words (10-15 words)
+
+  banned_patterns: |
+    // Mock fallbacks - hides failures
+    if (apiCallFails) return mockData;
+
+    // Vague errors - not actionable
+    throw new Error('Bad request');
+
+context: |
+  Configuring AI coding assistants for automatic standards enforcement.
+  AI assistants read config files on startup and enforce standards on every
+  code generation. War stories with context are more effective than abstract
+  rules. Process for living documentation: Incident -> Add war story ->
+  Git commit -> Team pulls -> AI learns. Supported formats: Claude Code
+  (CLAUDE.md), Cursor (.cursorrules), Continue (.continuerc.json), GitHub
+  Copilot (.github/copilot-instructions.md). Testing method: ask AI to
+  implement feature without config, note violations, add config, ask same
+  question in new session, verify improvement. Common fixes: AI ignores
+  prompt = make instructions more direct; AI over-applies rules = add
+  "when NOT to apply" sections; AI references wrong patterns = be more
+  specific about file locations.
+
+tags:
+  - core
+  - ai
+  - configuration
+  - developer-experience
+  - standards-enforcement
