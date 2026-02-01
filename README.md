@@ -32,7 +32,7 @@ anti_patterns:
 
 The original markdown standards remain as human-readable reference. YAML is the canonical format for tooling.
 
-**Schema**: See [equilateral-standards-yaml/SCHEMA.yaml](https://github.com/JamesFord-HappyHippo/equilateral-standards-yaml/blob/main/SCHEMA.yaml)
+**Schema**: See [equilateral-standards-yaml/SCHEMA.yaml](https://github.com/Equilateral-AI/equilateral-standards-yaml/blob/main/SCHEMA.yaml)
 
 ---
 
@@ -436,7 +436,7 @@ MIT License - Use freely in any project, commercial or open source.
 
 ## 🔗 Related Projects
 
-- **[EquilateralAgents Open Core](https://github.com/JamesFord-HappyHippo/equilateral-agents-open-core)** - 22 production-ready AI agents implementing these standards
+- **[EquilateralAgents Open Core](https://github.com/Equilateral-AI/equilateral-agents-open-core)** - 22 production-ready AI agents implementing these standards
 - **EquilateralAgents Enterprise** - 60+ specialized agents with advanced capabilities
 
 **Using these standards?** We'd love to hear about it! Contact info@happyhippo.ai
